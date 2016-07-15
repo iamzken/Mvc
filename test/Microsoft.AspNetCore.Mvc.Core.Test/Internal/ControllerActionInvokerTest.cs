@@ -2773,7 +2773,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 .Setup(o => o.RequestServices.GetService(typeof(ContentResultExecutor)))
                 .Returns(new ContentResultExecutor(
                     new Logger<ContentResultExecutor>(NullLoggerFactory.Instance),
-                    ArrayPool<byte>.Shared));
+                   new MemoryPoolHttpResponseStreamWriterFactory(ArrayPool<byte>.Shared, ArrayPool<char>.Shared)));
 
             if (routeData == null)
             {

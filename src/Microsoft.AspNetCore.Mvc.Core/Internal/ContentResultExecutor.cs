@@ -6,25 +6,19 @@ using System.Buffers;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Microsoft.Net.Http.Headers;
 
 namespace Microsoft.AspNetCore.Mvc.Internal
 {
     public class ContentResultExecutor
     {
-        /// <summary>
-        /// The maximum number of characters that are encoded and written to stream in a single pass.
-        /// </summary>
-        public const int MaxCharacterChunkSize = 1024;
-
         private const string DefaultContentType = "text/plain; charset=utf-8";
-        private readonly ArrayPool<byte> _byteArrayPool;
         private readonly ILogger<ContentResultExecutor> _logger;
+        private readonly IHttpResponseStreamWriterFactory _httpResponseStreamWriterFactory;
 
-        public ContentResultExecutor(ILogger<ContentResultExecutor> logger, ArrayPool<byte> byteArrayPool)
+        public ContentResultExecutor(ILogger<ContentResultExecutor> logger, IHttpResponseStreamWriterFactory httpResponseStreamWriterFactory)
         {
             _logger = logger;
-            _byteArrayPool = byteArrayPool;
+            _httpResponseStreamWriterFactory = httpResponseStreamWriterFactory;
         }
 
         public async Task ExecuteAsync(ActionContext context, ContentResult result)
@@ -63,27 +57,10 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             {
                 response.ContentLength = resolvedContentTypeEncoding.GetByteCount(result.Content);
 
-                var requiredLength = resolvedContentTypeEncoding.GetMaxByteCount(MaxCharacterChunkSize);
-                var byteBuffer = _byteArrayPool.Rent(requiredLength);
-
-                try
+                using (var textWriter = _httpResponseStreamWriterFactory.CreateWriter(response.Body, resolvedContentTypeEncoding))
                 {
-                    var sourceIndex = 0;
-
-                    while (sourceIndex < result.Content.Length)
-                    {
-                        var charCount = Math.Min(result.Content.Length - sourceIndex, MaxCharacterChunkSize);
-
-                        var bytesWritten = resolvedContentTypeEncoding.GetBytes(result.Content, sourceIndex, charCount, byteBuffer, 0);
-
-                        await response.Body.WriteAsync(byteBuffer, 0, bytesWritten);
-
-                        sourceIndex += charCount;
-                    }
-                }
-                finally
-                {
-                    _byteArrayPool.Return(byteBuffer);
+                    await textWriter.WriteAsync(result.Content);
+                    await textWriter.FlushAsync();
                 }
             }
         }
